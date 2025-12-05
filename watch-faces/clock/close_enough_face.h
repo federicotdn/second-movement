@@ -34,12 +34,16 @@
  * - 5:10 is "10 past 5" displayed as "10 P 5"
  * - 5:45 is "15 to 6" displayed as "15 2 6"
  * - 6:00 is "6 o'clock" displayed as "6 OC"
+ *
+ * Long-press ALARM to toggle the hourly chime.
  */
 
 typedef struct {
     int prev_five_minute_period;
     int prev_min_checked;
     uint8_t last_battery_check;
+    uint8_t watch_face_index;
+    bool time_signal_enabled;
     bool battery_low;
 } close_enough_state_t;
 
@@ -47,11 +51,12 @@ void close_enough_face_setup(uint8_t watch_face_index, void ** context_ptr);
 void close_enough_face_activate(void *context);
 bool close_enough_face_loop(movement_event_t event, void *context);
 void close_enough_face_resign(void *context);
+movement_watch_face_advisory_t close_enough_face_advise(void *context);
 
 #define close_enough_face ((const watch_face_t){ \
     close_enough_face_setup, \
     close_enough_face_activate, \
     close_enough_face_loop, \
     close_enough_face_resign, \
-    NULL, \
+    close_enough_face_advise, \
 })

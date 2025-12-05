@@ -74,11 +74,30 @@ static void clock_indicate(watch_indicator_t indicator, bool on) {
     }
 }
 
+static void clock_indicate_alarm() {
+    clock_indicate(WATCH_INDICATOR_SIGNAL, movement_alarm_enabled());
+}
+
+static void clock_indicate_time_signal(close_enough_state_t *state) {
+    clock_indicate(WATCH_INDICATOR_BELL, state->time_signal_enabled);
+}
+
+static void clock_indicate_24h() {
+    clock_indicate(WATCH_INDICATOR_24H, !!movement_clock_mode_24h());
+}
+
+static void clock_toggle_time_signal(close_enough_state_t *state) {
+    state->time_signal_enabled = !state->time_signal_enabled;
+    clock_indicate_time_signal(state);
+}
+
 void close_enough_face_setup(uint8_t watch_face_index, void ** context_ptr) {
-    (void) watch_face_index;
     if (*context_ptr == NULL) {
         *context_ptr = malloc(sizeof(close_enough_state_t));
-        memset(*context_ptr, 0, sizeof(close_enough_state_t));
+        close_enough_state_t *state = (close_enough_state_t *) *context_ptr;
+        memset(state, 0, sizeof(close_enough_state_t));
+        state->time_signal_enabled = false;
+        state->watch_face_index = watch_face_index;
     }
 }
 
@@ -87,8 +106,9 @@ void close_enough_face_activate(void *context) {
 
     clock_stop_tick_tock_animation();
 
-    clock_indicate(WATCH_INDICATOR_BELL, movement_alarm_enabled());
-    clock_indicate(WATCH_INDICATOR_24H, !!movement_clock_mode_24h());
+    clock_indicate_time_signal(state);
+    clock_indicate_alarm();
+    clock_indicate_24h();
 
     // this ensures that none of the five_minute_periods will match, so we always rerender when the face activates
     state->prev_five_minute_period = -1;
@@ -171,9 +191,9 @@ bool close_enough_face_loop(movement_event_t event, void *context) {
                 show_next_hour = true;
             }
 
-            if (movement_clock_mode_24h() != MOVEMENT_CLOCK_MODE_24H) {
+            if (movement_clock_mode_24h() == MOVEMENT_CLOCK_MODE_12H) {
                 // if we are at "MM 2 12", don't show the PM indicator
-                if (close_enough_hour < 12 || show_next_hour) {
+              if (close_enough_hour < 12 || (close_enough_hour == 12 && show_next_hour)) {
                     watch_clear_indicator(WATCH_INDICATOR_PM);
                 } else {
                     watch_set_indicator(WATCH_INDICATOR_PM);
@@ -236,7 +256,16 @@ bool close_enough_face_loop(movement_event_t event, void *context) {
 
             state->prev_five_minute_period = five_minute_period;
             break;
-
+        case EVENT_ALARM_LONG_PRESS:
+            clock_toggle_time_signal(state);
+            break;
+        case EVENT_BACKGROUND_TASK:
+            // same comment as in clock_face.c: uncomment this
+            // line to snap back to the clock face when the hour
+            // signal sounds.
+            // movement_move_to_face(state->watch_face_index);
+            movement_play_signal();
+            break;
         default:
             return movement_default_loop_handler(event);
     }
@@ -246,5 +275,17 @@ bool close_enough_face_loop(movement_event_t event, void *context) {
 
 void close_enough_face_resign(void *context) {
     (void) context;
+}
+
+movement_watch_face_advisory_t close_enough_face_advise(void *context) {
+    movement_watch_face_advisory_t retval = { 0 };
+    close_enough_state_t *state = (close_enough_state_t *) context;
+
+    if (state->time_signal_enabled) {
+        watch_date_time_t date_time = movement_get_local_date_time();
+        retval.wants_background_task = date_time.unit.minute == 0;
+    }
+
+    return retval;
 }
 
